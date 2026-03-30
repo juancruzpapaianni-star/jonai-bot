@@ -320,11 +320,22 @@ Cuando el usuario te diga algo como "Cecchini pagó todo", "entregué el video 3
 Respondé siempre en español, corto y directo. Confirmá los cambios realizados."""
 
 
+# Historial de conversacion por usuario (en memoria)
+conversation_history = {}
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
+    user_id = update.message.from_user.id
     await update.message.reply_text("⏳")
 
-    messages = [{"role": "user", "content": user_message}]
+    # Recuperar historial o crear nuevo
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+
+    conversation_history[user_id].append({"role": "user", "content": user_message})
+
+    # Limitar historial a los ultimos 20 mensajes para no pasarse de tokens
+    messages = conversation_history[user_id][-20:]
 
     while True:
         response = client_anthropic.messages.create(
@@ -338,10 +349,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if response.stop_reason == "end_turn":
             text = "".join(b.text for b in response.content if hasattr(b, "text"))
             await update.message.reply_text(text or "Listo.")
+            # Guardar respuesta en historial
+            conversation_history[user_id].append({"role": "assistant", "content": text})
             break
 
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
+            conversation_history[user_id].append({"role": "assistant", "content": response.content})
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
