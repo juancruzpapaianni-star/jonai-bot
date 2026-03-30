@@ -213,50 +213,78 @@ def add_video(cliente, video_name, estado="Pendiente", urgencia="Alta", tarea=""
 
 
 def create_proposal(cliente, rubro, producto, objetivo, cantidad_videos, precio_ff, precio_mercado, detalles=""):
-    PROPOSAL_SYSTEM = """Sos el estratega creativo de Jon AI, una agencia de contenido con IA. Tu trabajo es redactar propuestas comerciales para clientes potenciales.
+    PROPOSAL_SYSTEM = """Sos el estratega creativo de Jon AI, una agencia de contenido con IA.
+Redactás propuestas comerciales en Notion. Cada propuesta tiene bloques tipados.
 
 ESTILO Y VOZ:
 - Tono: directo, estratégico, con autoridad. Nunca genérico.
-- Lenguaje: español rioplatense. "vos", "no es X, es Y", frases cortas como golpes.
-- NUNCA decir "hacemos videos". El contenido es infraestructura, activo estratégico, herramienta de conversión.
-- Real estate = percepción y deseo / E-commerce = conversión y autoridad / Otros = escala y velocidad.
+- Español rioplatense: "vos", frases cortas como golpes. "No es X. Es Y."
+- NUNCA "hacemos videos" — siempre "infraestructura de ventas", "activo estratégico", "sistema de conversión"
+- Real estate = percepción y deseo / E-commerce = conversión y autoridad / Otros = escala y velocidad
 
-FRASES CLAVE POR INDUSTRIA:
-Real estate: "No basta con mostrar espacios. Hay que traducir arquitectura en deseo." / "En real estate, la percepción visual define el nivel del desarrollador."
-E-commerce: "El video no es contenido creativo. Es infraestructura de ventas." / "El diferencial no está en el producto. Está en cómo se comunica."
-General: "La IA no reemplaza el guión. Lo ejecuta con mayor nivel." / "No se trata de hacer videos. Se trata de profesionalizar la comunicación."
+FRASES CLAVE (usá variantes de estas):
+- "El diferencial no está en el producto. Está en cómo se comunica."
+- "El video no es contenido creativo. Es infraestructura de ventas."
+- "No basta con mostrar. Hay que traducir en deseo."
+- "La IA no reemplaza el guión. Lo ejecuta con mayor nivel."
+- "No se trata de hacer videos. Se trata de profesionalizar la comunicación."
 
-Cada sección debe ser densa, específica, con argumentos concretos. Sin paja, sin frases vacías."""
+FORMATO DE SALIDA — array JSON de bloques. Cada bloque tiene "type" y "text":
+- "h2": título de sección principal
+- "h3": subtítulo dentro de sección (ej: nombre de fase, nombre de producto)
+- "p": párrafo corto (máximo 1-2 oraciones por bloque — frases cortas, cada idea su bloque)
+- "bullet": ítem de lista con viñeta
+- "divider": separador (sin text)
+
+REGLA MÁS IMPORTANTE: NO uses párrafos largos. Cada oración corta = su propio bloque "p".
+Igual que en esta propuesta real de ejemplo:
+[
+  {"type":"p","text":"La operación no es emergente."},
+  {"type":"p","text":"Es liderazgo consolidado."},
+  {"type":"bullet","text":"Tienda oficial activa en Mercado Libre"},
+  {"type":"bullet","text":"Posicionamiento fuerte en su categoría"},
+  {"type":"p","text":"El diferencial no está en el producto."},
+  {"type":"p","text":"Está en cómo se comunica."}
+]"""
 
     total_ff = precio_ff * cantidad_videos
     total_mercado = precio_mercado * cantidad_videos
 
-    prompt = f"""Generá una propuesta completa para este cliente de Jon AI.
+    prompt = f"""Generá la propuesta completa para este cliente. Devolvé SOLO el array JSON, sin markdown, sin texto extra.
 
-DATOS:
+DATOS DEL CLIENTE:
 - Cliente: {cliente}
 - Rubro: {rubro}
 - Producto/Servicio: {producto}
-- Objetivo del contenido: {objetivo}
+- Objetivo: {objetivo}
 - Cantidad de videos: {cantidad_videos}
-- Precio Friends & Family: ${precio_ff} USD/video → Total: ${total_ff} USD
-- Precio real de mercado: ${precio_mercado} USD/video → Total: ${total_mercado} USD
-- Detalles adicionales: {detalles if detalles else "ninguno"}
+- Precio F&F: ${precio_ff} USD/video (Total: ${total_ff} USD)
+- Precio mercado: ${precio_mercado} USD/video (Total: ${total_mercado} USD)
+- Detalles: {detalles if detalles else "ninguno"}
 
-Devolvé SOLO un JSON válido, sin markdown, sin texto antes ni después:
-{{
-  "subtitulo": "Una línea corta y contundente que define el proyecto estratégicamente. Ej: 'Sistema de Video UGC para Conversión en Meta Ads'",
-  "contexto": "3-4 oraciones que describen la situación actual del cliente. Qué tienen hoy, qué les falta, por qué el contenido es urgente ahora para su industria. Sin suavizar la realidad.",
-  "enfoque_ia": "2-3 oraciones que explican cómo la IA acelera y potencia la producción. Qué se puede hacer con IA que no se podría sin ella: velocidad de iteración, escala, calidad consistente.",
-  "alcance": "Lista precisa de los {cantidad_videos} videos: formato (UGC, testimonial, demo, etc.), duración estimada, plataforma destino, tipo de guión, si incluye locución o no.",
-  "proceso": "3 fases concretas con tiempos en horas hábiles. Fase 1: briefing y guiones (X hs). Fase 2: producción IA (X hs). Fase 3: entrega + feedback (X hs). Incluir Drive compartido y rondas de revisión.",
-  "inversion": "Presentá el precio de mercado de ${total_mercado} USD como referencia de valor real, y el precio F&F de ${total_ff} USD como el precio del proyecto. Justificá por qué ese precio es una ventaja estratégica ahora.",
-  "escalabilidad": "2-3 oraciones sobre qué viene después: más videos, más formatos, más plataformas. Cómo este proyecto se convierte en un sistema de contenido permanente para el cliente."
-}}"""
+ESTRUCTURA REQUERIDA (en este orden):
+1. Bloque h3 con el subtítulo estratégico del proyecto
+2. divider
+3. h2 "Contexto" → párrafos cortos + bullets con la situación real del cliente
+4. divider
+5. h2 "Enfoque IA-first" → párrafos cortos explicando cómo la IA potencia la producción
+6. divider
+7. h2 "Alcance / Entregables" → h3 por tipo de video + bullets con specs (formato, duración, plataforma)
+8. divider
+9. h2 "Proceso y Tiempos" → h3 por etapa (ej: "Etapa 1 – Planificación (48h)") + bullets con tareas
+10. divider
+11. h2 "Inversión" → (NO incluyas precio aquí, solo el argumento de valor — 2-3 párrafos cortos)
+12. divider
+13. h2 "Escalamiento Estratégico" → párrafos cortos + bullets sobre próximos pasos y crecimiento
+14. divider
+15. Último p: "No se trata de hacer videos."
+16. p: "Se trata de profesionalizar la comunicación."
+
+Devolvé SOLO el array JSON:"""
 
     resp = client_anthropic.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=3000,
+        max_tokens=4000,
         system=PROPOSAL_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -266,72 +294,86 @@ Devolvé SOLO un JSON válido, sin markdown, sin texto antes ni después:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    data = json.loads(raw.strip())
+    block_specs = json.loads(raw.strip())
 
-    def rich(text):
-        return [{"type": "text", "text": {"content": text}}]
+    # --- Notion block builders ---
+    def rich(text, bold=False, strike=False):
+        ann = {}
+        if bold:
+            ann["bold"] = True
+        if strike:
+            ann["strikethrough"] = True
+        item = {"type": "text", "text": {"content": text}}
+        if ann:
+            item["annotations"] = ann
+        return [item]
 
-    def rich_strikethrough(text):
-        return [{"type": "text", "text": {"content": text}, "annotations": {"strikethrough": True}}]
-
-    def h2(text):
-        return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich(text)}}
-
-    def h3(text):
-        return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": rich(text)}}
-
-    def para(text):
+    def notion_block(spec):
+        t = spec.get("type")
+        text = spec.get("text", "")
+        if t == "h2":
+            return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich(text)}}
+        if t == "h3":
+            return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": rich(text)}}
+        if t == "bullet":
+            return {"object": "block", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": rich(text)}}
+        if t == "divider":
+            return {"object": "block", "type": "divider", "divider": {}}
+        # default: paragraph
         return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich(text)}}
 
-    def para_mixed(parts):
-        # parts = list of (text, strikethrough bool)
-        rt = []
-        for text, strike in parts:
-            item = {"type": "text", "text": {"content": text}}
-            if strike:
-                item["annotations"] = {"strikethrough": True}
-            rt.append(item)
-        return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rt}}
+    blocks = [notion_block(s) for s in block_specs]
 
-    def divider():
-        return {"object": "block", "type": "divider", "divider": {}}
-
-    inversion_block = para_mixed([
-        (f"Precio real de mercado: ${total_mercado} USD", True),
-        (f"  →  Precio Friends & Family: ${total_ff} USD\n\n", False),
-        (data["inversion"], False),
-    ])
-
-    blocks = [
-        h3(data["subtitulo"]),
-        divider(),
-        h2("Contexto"),
-        para(data["contexto"]),
-        divider(),
-        h2("Enfoque IA-first"),
-        para(data["enfoque_ia"]),
-        divider(),
-        h2("Alcance / Entregables"),
-        para(data["alcance"]),
-        divider(),
-        h2("Proceso y tiempos"),
-        para(data["proceso"]),
-        divider(),
-        h2("Inversión"),
-        inversion_block,
-        divider(),
-        h2("Escalabilidad"),
-        para(data["escalabilidad"]),
-        divider(),
-        para("Jon AI Team 🚀"),
+    # Append investment pricing block (structured, always consistent)
+    pricing_blocks = [
+        {"object": "block", "type": "divider", "divider": {}},
+        {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich("Inversión")}},
+        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [
+            {"type": "text", "text": {"content": f"{cantidad_videos} videos × USD {precio_mercado}"}, "annotations": {"strikethrough": True}}
+        ]}},
+        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [
+            {"type": "text", "text": {"content": f"USD {total_mercado}"}, "annotations": {"strikethrough": True}}
+        ]}},
+        {"object": "block", "type": "heading_3", "heading_3": {"rich_text": rich(f"💛 Valor Friends & Family – Bloque Piloto")}},
+        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich(f"{cantidad_videos} videos × USD {precio_ff}")}},
+        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich(f"Total: USD {total_ff}", bold=True)}},
+        {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich("Este valor aplica exclusivamente para este bloque inicial.")}},
     ]
+
+    # Find and replace the investment h2 in blocks, or just append before escalamiento
+    final_blocks = []
+    skip_next_divider = False
+    for b in blocks:
+        # Remove the AI-generated investment section (we replace with structured one)
+        props = b.get("heading_2") or b.get("heading_3") or b.get("paragraph") or b.get("bulleted_list_item") or {}
+        texts = props.get("rich_text", [])
+        block_text = "".join(t.get("text", {}).get("content", "") for t in texts)
+        if b.get("type") == "heading_2" and "nversión" in block_text:
+            final_blocks.extend(pricing_blocks)
+            skip_next_divider = True
+            continue
+        if skip_next_divider and b.get("type") == "divider":
+            skip_next_divider = False
+            continue
+        final_blocks.append(b)
+
+    # If investment section wasn't in the AI output, append it
+    has_investment = any(
+        (b.get("heading_2") or {}).get("rich_text", [{}])[0].get("text", {}).get("content", "").find("nversión") >= 0
+        for b in final_blocks if b.get("type") == "heading_2"
+    )
+    if not has_investment:
+        final_blocks.extend(pricing_blocks)
+
+    # Closing line
+    final_blocks.append({"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich("Jon AI Team 🚀", bold=True)}})
 
     page_data = {
         "parent": {"page_id": PROPOSALS_PARENT_ID},
         "properties": {
             "title": {"title": [{"text": {"content": f"Propuesta — {cliente}"}}]}
         },
-        "children": blocks
+        "children": final_blocks
     }
 
     r = requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json=page_data)
