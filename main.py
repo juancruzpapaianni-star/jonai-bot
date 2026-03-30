@@ -17,6 +17,7 @@ NOTION_HEADERS = {
 }
 
 FINANCE_DB = "333f30c4-acd5-819c-9c2e-d796c93644c1"
+PROPOSALS_PARENT_ID = "333f30c4-acd5-80bd-96d2-c2c603681972"
 
 CLIENT_VIDEO_DBS = {
     "cecchini":     "333f30c4-acd5-8168-af35-d4a14e4c3a60",
@@ -211,6 +212,110 @@ def add_video(cliente, video_name, estado="Pendiente", urgencia="Alta", tarea=""
     return {"success": True, "video": video_name}
 
 
+def create_proposal(cliente, rubro, producto, objetivo, cantidad_videos, precio_ff, precio_mercado, detalles=""):
+    PROPOSAL_SYSTEM = """Sos el estratega creativo de Jon AI. Generás propuestas comerciales con voz directa, estratégica, con autoridad.
+Lenguaje: español rioplatense. "vos", frases cortas como golpes. Nunca genérico.
+Nunca decir "hacemos videos". El contenido es infraestructura, activo estratégico, herramienta de conversión.
+Real estate = percepción y deseo. E-commerce = conversión y autoridad. General = escala y velocidad.
+Siempre cerrar con "Jon AI Team 🚀"."""
+
+    total_ff = precio_ff * cantidad_videos
+    total_mercado = precio_mercado * cantidad_videos
+
+    prompt = f"""Generá una propuesta completa para este cliente:
+- Cliente: {cliente}
+- Rubro: {rubro}
+- Producto/Servicio: {producto}
+- Objetivo: {objetivo}
+- Videos: {cantidad_videos} videos
+- Precio F&F: ${precio_ff}/video → total ${total_ff}
+- Precio mercado (tachado): ${precio_mercado}/video → total ${total_mercado}
+- Detalles extra: {detalles if detalles else "ninguno"}
+
+Devolvé SOLO un JSON con esta estructura (sin markdown, sin texto extra):
+{{
+  "subtitulo": "una línea que define el proyecto estratégicamente",
+  "contexto": "2-3 párrafos sobre situación actual del cliente, qué les falta, por qué el contenido importa ahora",
+  "enfoque_ia": "2 párrafos sobre cómo la IA es el motor de producción y qué permite hacer",
+  "alcance": "lista detallada de entregables: qué videos, formatos, duración, plataformas",
+  "proceso": "2-3 fases con tiempos en horas hábiles, Drive compartido, rondas de feedback",
+  "inversion": "presentación del precio real vs F&F, justificación del valor",
+  "escalabilidad": "qué viene después, cómo este proyecto crece"
+}}"""
+
+    resp = client_anthropic.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2500,
+        system=PROPOSAL_SYSTEM,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw = resp.content[0].text.strip()
+    # limpiar markdown si viene con ```json
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    data = json.loads(raw.strip())
+
+    def rich(text):
+        return [{"type": "text", "text": {"content": text}}]
+
+    def h2(text):
+        return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich(text)}}
+
+    def h3(text):
+        return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": rich(text)}}
+
+    def para(text):
+        return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich(text)}}
+
+    def divider():
+        return {"object": "block", "type": "divider", "divider": {}}
+
+    blocks = [
+        h3(data["subtitulo"]),
+        divider(),
+        h2("Contexto"),
+        para(data["contexto"]),
+        divider(),
+        h2("Enfoque IA-first"),
+        para(data["enfoque_ia"]),
+        divider(),
+        h2("Alcance / Entregables"),
+        para(data["alcance"]),
+        divider(),
+        h2("Proceso y tiempos"),
+        para(data["proceso"]),
+        divider(),
+        h2("Inversión"),
+        para(data["inversion"]),
+        divider(),
+        h2("Escalabilidad"),
+        para(data["escalabilidad"]),
+        divider(),
+        para("Jon AI Team 🚀"),
+    ]
+
+    page_data = {
+        "parent": {"page_id": PROPOSALS_PARENT_ID},
+        "properties": {
+            "title": {"title": [{"text": {"content": f"Propuesta — {cliente}"}}]}
+        },
+        "children": blocks
+    }
+
+    r = requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json=page_data)
+    result = r.json()
+
+    if "id" in result:
+        page_id = result["id"].replace("-", "")
+        url = f"https://www.notion.so/{page_id}"
+        return {"success": True, "url": url, "cliente": cliente}
+    else:
+        return {"error": result.get("message", "Error creando propuesta")}
+
+
 def run_tool(name, inputs):
     tools_map = {
         "get_finance_summary":      get_finance_summary,
@@ -219,6 +324,7 @@ def run_tool(name, inputs):
         "get_client_videos":        get_client_videos,
         "update_video_status":      update_video_status,
         "add_video":                add_video,
+        "create_proposal":          create_proposal,
     }
     fn = tools_map.get(name)
     return fn(**inputs) if fn else {"error": "Tool not found"}
@@ -307,6 +413,24 @@ TOOLS = [
             },
             "required": ["cliente", "video_name"]
         }
+    },
+    {
+        "name": "create_proposal",
+        "description": "Genera una propuesta comercial completa en Notion para un cliente potencial, con voz y estructura de Jon AI.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cliente":          {"type": "string", "description": "Nombre del cliente o empresa"},
+                "rubro":            {"type": "string", "description": "Industria o rubro del cliente. Ej: real estate, e-commerce, skincare"},
+                "producto":         {"type": "string", "description": "Qué producto o servicio vende el cliente"},
+                "objetivo":         {"type": "string", "description": "Qué quiere lograr con el contenido. Ej: conversión, ads, posicionamiento"},
+                "cantidad_videos":  {"type": "integer", "description": "Cantidad de videos del proyecto"},
+                "precio_ff":        {"type": "number", "description": "Precio Friends & Family por video en USD"},
+                "precio_mercado":   {"type": "number", "description": "Precio real de mercado por video en USD (se muestra tachado)"},
+                "detalles":         {"type": "string", "description": "Cualquier detalle extra del proyecto. Opcional."}
+            },
+            "required": ["cliente", "rubro", "producto", "objetivo", "cantidad_videos", "precio_ff", "precio_mercado"]
+        }
     }
 ]
 
@@ -321,6 +445,10 @@ Cáscara (agencia marketing), L'Avenue (real state - en negociación).
 
 Cuando el usuario te diga algo como "Cecchini pagó todo", "entregué el video 3 de Luqstoff",
 "¿cuánto me deben?", "agregá un video a Gran 28" — interpretá la intención y usá las herramientas.
+
+También podés generar propuestas comerciales en Notion. Cuando el usuario diga algo como
+"haceme una propuesta para X", "generá propuesta para tal cliente", pedile los datos que falten
+(rubro, producto, objetivo, cantidad de videos, precio F&F, precio mercado) y usá create_proposal.
 
 Respondé siempre en español, corto y directo. Confirmá los cambios realizados."""
 
