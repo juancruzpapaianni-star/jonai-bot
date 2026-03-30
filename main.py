@@ -89,6 +89,7 @@ def get_finance_summary(month=None):
     results = notion_query(FINANCE_DB)
     cobrado = pendiente = egresos = 0
     detalles_pendientes = []
+    detalle_egresos = []
 
     for r in results:
         props = r["properties"]
@@ -111,6 +112,9 @@ def get_finance_summary(month=None):
                 cobrado += monto
         elif tipo == "Egreso":
             egresos += monto
+            concepto = get_text(props.get("Concepto"))
+            categoria = get_select(props.get("Categoria"))
+            detalle_egresos.append(f"{concepto} ({categoria}): ${monto}")
 
     return {
         "ingresos_cobrados": round(cobrado, 2),
@@ -118,7 +122,8 @@ def get_finance_summary(month=None):
         "egresos": round(egresos, 2),
         "ganancia_neta_cobrado": round(cobrado - egresos, 2),
         "ganancia_si_cobras_todo": round(cobrado + pendiente - egresos, 2),
-        "detalle_pendientes": detalles_pendientes
+        "detalle_pendientes": detalles_pendientes,
+        "detalle_egresos": detalle_egresos
     }
 
 
