@@ -213,45 +213,55 @@ def add_video(cliente, video_name, estado="Pendiente", urgencia="Alta", tarea=""
 
 
 def create_proposal(cliente, rubro, producto, objetivo, cantidad_videos, precio_ff, precio_mercado, detalles=""):
-    PROPOSAL_SYSTEM = """Sos el estratega creativo de Jon AI. Generás propuestas comerciales con voz directa, estratégica, con autoridad.
-Lenguaje: español rioplatense. "vos", frases cortas como golpes. Nunca genérico.
-Nunca decir "hacemos videos". El contenido es infraestructura, activo estratégico, herramienta de conversión.
-Real estate = percepción y deseo. E-commerce = conversión y autoridad. General = escala y velocidad.
-Siempre cerrar con "Jon AI Team 🚀"."""
+    PROPOSAL_SYSTEM = """Sos el estratega creativo de Jon AI, una agencia de contenido con IA. Tu trabajo es redactar propuestas comerciales para clientes potenciales.
+
+ESTILO Y VOZ:
+- Tono: directo, estratégico, con autoridad. Nunca genérico.
+- Lenguaje: español rioplatense. "vos", "no es X, es Y", frases cortas como golpes.
+- NUNCA decir "hacemos videos". El contenido es infraestructura, activo estratégico, herramienta de conversión.
+- Real estate = percepción y deseo / E-commerce = conversión y autoridad / Otros = escala y velocidad.
+
+FRASES CLAVE POR INDUSTRIA:
+Real estate: "No basta con mostrar espacios. Hay que traducir arquitectura en deseo." / "En real estate, la percepción visual define el nivel del desarrollador."
+E-commerce: "El video no es contenido creativo. Es infraestructura de ventas." / "El diferencial no está en el producto. Está en cómo se comunica."
+General: "La IA no reemplaza el guión. Lo ejecuta con mayor nivel." / "No se trata de hacer videos. Se trata de profesionalizar la comunicación."
+
+Cada sección debe ser densa, específica, con argumentos concretos. Sin paja, sin frases vacías."""
 
     total_ff = precio_ff * cantidad_videos
     total_mercado = precio_mercado * cantidad_videos
 
-    prompt = f"""Generá una propuesta completa para este cliente:
+    prompt = f"""Generá una propuesta completa para este cliente de Jon AI.
+
+DATOS:
 - Cliente: {cliente}
 - Rubro: {rubro}
 - Producto/Servicio: {producto}
-- Objetivo: {objetivo}
-- Videos: {cantidad_videos} videos
-- Precio F&F: ${precio_ff}/video → total ${total_ff}
-- Precio mercado (tachado): ${precio_mercado}/video → total ${total_mercado}
-- Detalles extra: {detalles if detalles else "ninguno"}
+- Objetivo del contenido: {objetivo}
+- Cantidad de videos: {cantidad_videos}
+- Precio Friends & Family: ${precio_ff} USD/video → Total: ${total_ff} USD
+- Precio real de mercado: ${precio_mercado} USD/video → Total: ${total_mercado} USD
+- Detalles adicionales: {detalles if detalles else "ninguno"}
 
-Devolvé SOLO un JSON con esta estructura (sin markdown, sin texto extra):
+Devolvé SOLO un JSON válido, sin markdown, sin texto antes ni después:
 {{
-  "subtitulo": "una línea que define el proyecto estratégicamente",
-  "contexto": "2-3 párrafos sobre situación actual del cliente, qué les falta, por qué el contenido importa ahora",
-  "enfoque_ia": "2 párrafos sobre cómo la IA es el motor de producción y qué permite hacer",
-  "alcance": "lista detallada de entregables: qué videos, formatos, duración, plataformas",
-  "proceso": "2-3 fases con tiempos en horas hábiles, Drive compartido, rondas de feedback",
-  "inversion": "presentación del precio real vs F&F, justificación del valor",
-  "escalabilidad": "qué viene después, cómo este proyecto crece"
+  "subtitulo": "Una línea corta y contundente que define el proyecto estratégicamente. Ej: 'Sistema de Video UGC para Conversión en Meta Ads'",
+  "contexto": "3-4 oraciones que describen la situación actual del cliente. Qué tienen hoy, qué les falta, por qué el contenido es urgente ahora para su industria. Sin suavizar la realidad.",
+  "enfoque_ia": "2-3 oraciones que explican cómo la IA acelera y potencia la producción. Qué se puede hacer con IA que no se podría sin ella: velocidad de iteración, escala, calidad consistente.",
+  "alcance": "Lista precisa de los {cantidad_videos} videos: formato (UGC, testimonial, demo, etc.), duración estimada, plataforma destino, tipo de guión, si incluye locución o no.",
+  "proceso": "3 fases concretas con tiempos en horas hábiles. Fase 1: briefing y guiones (X hs). Fase 2: producción IA (X hs). Fase 3: entrega + feedback (X hs). Incluir Drive compartido y rondas de revisión.",
+  "inversion": "Presentá el precio de mercado de ${total_mercado} USD como referencia de valor real, y el precio F&F de ${total_ff} USD como el precio del proyecto. Justificá por qué ese precio es una ventaja estratégica ahora.",
+  "escalabilidad": "2-3 oraciones sobre qué viene después: más videos, más formatos, más plataformas. Cómo este proyecto se convierte en un sistema de contenido permanente para el cliente."
 }}"""
 
     resp = client_anthropic.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=2500,
+        model="claude-sonnet-4-6",
+        max_tokens=3000,
         system=PROPOSAL_SYSTEM,
         messages=[{"role": "user", "content": prompt}]
     )
 
     raw = resp.content[0].text.strip()
-    # limpiar markdown si viene con ```json
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -260,6 +270,9 @@ Devolvé SOLO un JSON con esta estructura (sin markdown, sin texto extra):
 
     def rich(text):
         return [{"type": "text", "text": {"content": text}}]
+
+    def rich_strikethrough(text):
+        return [{"type": "text", "text": {"content": text}, "annotations": {"strikethrough": True}}]
 
     def h2(text):
         return {"object": "block", "type": "heading_2", "heading_2": {"rich_text": rich(text)}}
@@ -270,8 +283,24 @@ Devolvé SOLO un JSON con esta estructura (sin markdown, sin texto extra):
     def para(text):
         return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich(text)}}
 
+    def para_mixed(parts):
+        # parts = list of (text, strikethrough bool)
+        rt = []
+        for text, strike in parts:
+            item = {"type": "text", "text": {"content": text}}
+            if strike:
+                item["annotations"] = {"strikethrough": True}
+            rt.append(item)
+        return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rt}}
+
     def divider():
         return {"object": "block", "type": "divider", "divider": {}}
+
+    inversion_block = para_mixed([
+        (f"Precio real de mercado: ${total_mercado} USD", True),
+        (f"  →  Precio Friends & Family: ${total_ff} USD\n\n", False),
+        (data["inversion"], False),
+    ])
 
     blocks = [
         h3(data["subtitulo"]),
@@ -289,7 +318,7 @@ Devolvé SOLO un JSON con esta estructura (sin markdown, sin texto extra):
         para(data["proceso"]),
         divider(),
         h2("Inversión"),
-        para(data["inversion"]),
+        inversion_block,
         divider(),
         h2("Escalabilidad"),
         para(data["escalabilidad"]),
