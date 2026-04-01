@@ -18,6 +18,7 @@ NOTION_HEADERS = {
 
 FINANCE_DB = "333f30c4-acd5-819c-9c2e-d796c93644c1"
 PROPOSALS_PARENT_ID = "333f30c4-acd5-80bd-96d2-c2c603681972"
+PRODUCTION_DB = "335f30c4-acd5-81f3-9053-cf33e6c9b342"
 
 CLIENT_VIDEO_DBS = {
     "cecchini":     "333f30c4-acd5-8168-af35-d4a14e4c3a60",
@@ -387,15 +388,87 @@ Devolvé SOLO el array JSON:"""
         return {"error": result.get("message", "Error creando propuesta")}
 
 
+def get_production_calendar(cliente=None, estado=None, fecha=None):
+    filter_conditions = []
+    if cliente:
+        filter_conditions.append({"property": "Cliente", "select": {"equals": cliente}})
+    if estado:
+        filter_conditions.append({"property": "Estado", "select": {"equals": estado}})
+    if fecha:
+        filter_conditions.append({"property": "Fecha", "date": {"equals": fecha}})
+
+    if len(filter_conditions) == 1:
+        body = {"filter": filter_conditions[0]}
+    elif len(filter_conditions) > 1:
+        body = {"filter": {"and": filter_conditions}}
+    else:
+        body = {}
+
+    results = notion_query(PRODUCTION_DB, body)
+    entries = []
+    for r in results:
+        p = r["properties"]
+        entries.append({
+            "id": r["id"],
+            "tarea": get_text(p.get("Tarea")),
+            "cliente": get_select(p.get("Cliente")),
+            "fecha": p.get("Fecha", {}).get("date", {}).get("start", "") if p.get("Fecha", {}).get("date") else "",
+            "estado": get_select(p.get("Estado")),
+            "urgencia": get_select(p.get("Urgencia")),
+            "tipo": get_select(p.get("Tipo")),
+            "link": p.get("Link video", {}).get("url") or "",
+            "detalles": get_text(p.get("Detalles")),
+        })
+    return {"entries": entries, "total": len(entries)}
+
+
+def update_production_entry(tarea, cliente=None, estado=None, link=None):
+    filter_body = {"filter": {"property": "Tarea", "rich_text": {"contains": tarea}}}
+    if cliente:
+        filter_body = {"filter": {"and": [
+            {"property": "Tarea", "rich_text": {"contains": tarea}},
+            {"property": "Cliente", "select": {"equals": cliente}}
+        ]}}
+    results = notion_query(PRODUCTION_DB, filter_body)
+    updated = []
+    for r in results:
+        props = {}
+        if estado:
+            props["Estado"] = {"select": {"name": estado}}
+        if link:
+            props["Link video"] = {"url": link}
+        if props:
+            notion_update(r["id"], props)
+            updated.append(get_text(r["properties"].get("Tarea")))
+    return {"updated": updated, "count": len(updated)}
+
+
+def add_production_entry(tarea, cliente, fecha, tipo="Video", estado="Pendiente", urgencia="Alta", detalles=""):
+    props = {
+        "Tarea":    {"title": [{"text": {"content": tarea}}]},
+        "Cliente":  {"select": {"name": cliente}},
+        "Fecha":    {"date": {"start": fecha}},
+        "Estado":   {"select": {"name": estado}},
+        "Urgencia": {"select": {"name": urgencia}},
+        "Tipo":     {"select": {"name": tipo}},
+        "Detalles": {"rich_text": [{"text": {"content": detalles}}]},
+    }
+    result = notion_create(PRODUCTION_DB, props)
+    return {"success": True, "id": result.get("id"), "tarea": tarea}
+
+
 def run_tool(name, inputs):
     tools_map = {
-        "get_finance_summary":      get_finance_summary,
-        "add_transaction":          add_transaction,
+        "get_finance_summary":       get_finance_summary,
+        "add_transaction":           add_transaction,
         "update_transaction_status": update_transaction_status,
-        "get_client_videos":        get_client_videos,
-        "update_video_status":      update_video_status,
-        "add_video":                add_video,
-        "create_proposal":          create_proposal,
+        "get_client_videos":         get_client_videos,
+        "update_video_status":       update_video_status,
+        "add_video":                 add_video,
+        "create_proposal":           create_proposal,
+        "get_production_calendar":   get_production_calendar,
+        "update_production_entry":   update_production_entry,
+        "add_production_entry":      add_production_entry,
     }
     fn = tools_map.get(name)
     return fn(**inputs) if fn else {"error": "Tool not found"}
@@ -486,6 +559,49 @@ TOOLS = [
         }
     },
     {
+        "name": "get_production_calendar",
+        "description": "Consulta el calendario de producción unificado. Filtrá por cliente, estado o fecha.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cliente": {"type": "string", "description": "Nombre exacto del cliente. Ej: Altier, Cecchini"},
+                "estado":  {"type": "string", "enum": ["Pendiente", "En proceso", "Terminado", "Entregado"]},
+                "fecha":   {"type": "string", "description": "Fecha exacta en formato YYYY-MM-DD"}
+            }
+        }
+    },
+    {
+        "name": "update_production_entry",
+        "description": "Actualiza el estado y/o link de una entrada del calendario de producción.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tarea":   {"type": "string", "description": "Nombre o parte del nombre de la tarea"},
+                "cliente": {"type": "string", "description": "Cliente para filtrar mejor"},
+                "estado":  {"type": "string", "enum": ["Pendiente", "En proceso", "Terminado", "Entregado"]},
+                "link":    {"type": "string", "description": "URL del video entregado"}
+            },
+            "required": ["tarea"]
+        }
+    },
+    {
+        "name": "add_production_entry",
+        "description": "Agrega una nueva entrada al calendario de producción.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tarea":    {"type": "string"},
+                "cliente":  {"type": "string"},
+                "fecha":    {"type": "string", "description": "Formato YYYY-MM-DD"},
+                "tipo":     {"type": "string", "enum": ["Video", "Tarea"]},
+                "estado":   {"type": "string", "enum": ["Pendiente", "En proceso", "Terminado", "Entregado"]},
+                "urgencia": {"type": "string", "enum": ["Alta", "Media", "Baja"]},
+                "detalles": {"type": "string"}
+            },
+            "required": ["tarea", "cliente", "fecha"]
+        }
+    },
+    {
         "name": "create_proposal",
         "description": "Genera una propuesta comercial completa en Notion para un cliente potencial, con voz y estructura de Jon AI.",
         "input_schema": {
@@ -506,20 +622,31 @@ TOOLS = [
 ]
 
 SYSTEM_PROMPT = """Sos el asistente de Jon AI, una agencia de contenido UGC con IA.
-Tu trabajo es gestionar el Notion de la empresa: clientes, videos y finanzas.
+Tu trabajo es gestionar el Notion de la empresa: clientes, videos, producción y finanzas.
 
-Clientes activos: Cecchini (marroquinería), Gran 28 (impresoras laser / máquinas de tatuar),
-Altiér (crema celulitis), Íntegra (barras de proteína), WGW (real state),
-La Galera (real state), Real Billion (real state), Andenia (fintech),
-Ocha (real state), Luqstoff (electrodomésticos), Acrule (hidroponía),
-Cáscara (agencia marketing), L'Avenue (real state - en negociación).
+EQUIPO:
+- Juan: CEO, ventas, finanzas, dirección creativa (50%)
+- Martiniano: operativo, producción y equipo (25%)
+- Camilao: operativo, producción y equipo (25%)
+Sociedad activa desde abril 2026. Distribución mensual: revenue - gastos = ganancia neta, 10% fondo emergencia, resto 50/25/25.
 
-Cuando el usuario te diga algo como "Cecchini pagó todo", "entregué el video 3 de Luqstoff",
-"¿cuánto me deben?", "agregá un video a Gran 28" — interpretá la intención y usá las herramientas.
+CLIENTES ACTIVOS:
+Cecchini (marroquinería), Gran 28 (impresoras laser / máquinas de tatuar),
+Altiér (crema celulitis — flujo diario), Íntegra (barras de proteína), WGW (real estate),
+La Galera (real estate — bloqueado por pago), Real Billion (real estate),
+Andenia (fintech — avatares 3D), Ocha (real estate), Luqstoff (electrodomésticos),
+Acrule (hidroponía), Cáscara (agencia marketing), L'Avenue (marroquinería — bloqueado por pago).
 
-También podés generar propuestas comerciales en Notion. Cuando el usuario diga algo como
-"haceme una propuesta para X", "generá propuesta para tal cliente", pedile los datos que falten
-(rubro, producto, objetivo, cantidad de videos, precio F&F, precio mercado) y usá create_proposal.
+CALENDARIO DE PRODUCCIÓN:
+Hay una DB unificada con todos los videos y tareas por fecha. Podés consultar, actualizar estado,
+agregar links y crear nuevas entradas. Cuando alguien diga "entregué X", "el video de Y está listo",
+"poné el link de Z" — usá update_production_entry. Para ver qué hay pendiente usá get_production_calendar.
+
+FINANZAS:
+Cuando digan "Cecchini pagó", "agregar cobro", "¿cuánto nos deben?" — usá las tools financieras.
+
+PROPUESTAS:
+Cuando digan "haceme una propuesta para X" — pedí los datos que falten y usá create_proposal.
 
 Respondé siempre en español, corto y directo. Confirmá los cambios realizados."""
 
