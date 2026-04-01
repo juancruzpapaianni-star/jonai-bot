@@ -19,25 +19,10 @@ NOTION_HEADERS = {
 FINANCE_DB = "333f30c4-acd5-819c-9c2e-d796c93644c1"
 PROPOSALS_PARENT_ID = "333f30c4-acd5-80bd-96d2-c2c603681972"
 PRODUCTION_DB = "335f30c4-acd5-81f3-9053-cf33e6c9b342"
+JON_AI_OFFICE = "333f30c4-acd5-807a-929b-c1bc4d7d46de"
 
-CLIENT_VIDEO_DBS = {
-    "cecchini":     "333f30c4-acd5-8168-af35-d4a14e4c3a60",
-    "gran 28":      "333f30c4-acd5-81c2-b942-fc60bc2a43ee",
-    "gran28":       "333f30c4-acd5-81c2-b942-fc60bc2a43ee",
-    "altier":       "333f30c4-acd5-8118-a4db-c307331c4115",
-    "integra":      "333f30c4-acd5-81b5-ab58-d35f3dfca3c1",
-    "wgw":          "333f30c4-acd5-8137-99c1-fc81f85f098c",
-    "la galera":    "333f30c4-acd5-81dd-90f0-dc02e08d09c1",
-    "real billion": "333f30c4-acd5-8199-b0a6-e860bc1a7189",
-    "andenia":      "333f30c4-acd5-815b-bb6c-db66ffd7c0e5",
-    "ocha":         "333f30c4-acd5-814b-8fc7-cec404b978a0",
-    "luqstoff":     "333f30c4-acd5-8126-a203-cab9b6a9b790",
-    "acrule":       "333f30c4-acd5-81de-a4db-ed547676d17f",
-    "cascara":      "333f30c4-acd5-8185-bc4e-d3422648a1c9",
-    "lavenue":      "333f30c4-acd5-8117-a171-f5ce23fc8ab4",
-    "l'avenue":     "333f30c4-acd5-8117-a171-f5ce23fc8ab4",
-    "avenue":       "333f30c4-acd5-8117-a171-f5ce23fc8ab4",
-}
+# Cache dinamico de clientes — se llena en runtime, no hardcodeado
+_client_db_cache = {}
 
 client_anthropic = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
@@ -78,11 +63,100 @@ def get_number(prop):
     return prop.get("number") or 0 if prop else 0
 
 def find_client_db(cliente):
-    cl = cliente.lower()
-    for key, val in CLIENT_VIDEO_DBS.items():
+    cl = cliente.lower().strip()
+
+    # Buscar en cache primero
+    for key, val in _client_db_cache.items():
         if key in cl or cl in key:
             return val
+
+    # Si no está en cache, buscar en Notion
+    r = requests.get(
+        f"https://api.notion.com/v1/blocks/{JON_AI_OFFICE}/children?page_size=50",
+        headers=NOTION_HEADERS
+    )
+    blocks = r.json().get("results", [])
+    for block in blocks:
+        if block["type"] != "child_page":
+            continue
+        page_title = block.get("child_page", {}).get("title", "").lower()
+        if cl in page_title or page_title in cl:
+            page_id = block["id"]
+            # Buscar la DB de Videos dentro de esa página
+            children = requests.get(
+                f"https://api.notion.com/v1/blocks/{page_id}/children",
+                headers=NOTION_HEADERS
+            ).json().get("results", [])
+            for child in children:
+                if child["type"] == "child_database":
+                    db_id = child["id"]
+                    _client_db_cache[page_title] = db_id
+                    return db_id
     return None
+
+
+def onboard_client(nombre, rubro, notas=""):
+    # 1. Crear página del cliente en JON AI Office
+    page = requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json={
+        "parent": {"page_id": JON_AI_OFFICE},
+        "properties": {
+            "title": {"title": [{"text": {"content": nombre}}]}
+        }
+    }).json()
+    page_id = page.get("id")
+    if not page_id:
+        return {"error": "No se pudo crear la página del cliente"}
+
+    # 2. Crear DB de Videos dentro de esa página
+    db = requests.post("https://api.notion.com/v1/databases", headers=NOTION_HEADERS, json={
+        "parent": {"page_id": page_id},
+        "title": [{"text": {"content": "Videos"}}],
+        "properties": {
+            "Video":           {"title": {}},
+            "Estado":          {"select": {"options": [
+                {"name": "Pendiente",   "color": "red"},
+                {"name": "En proceso",  "color": "yellow"},
+                {"name": "Terminado",   "color": "blue"},
+                {"name": "Entregado",   "color": "green"}
+            ]}},
+            "Urgencia":        {"select": {"options": [
+                {"name": "Alta",  "color": "red"},
+                {"name": "Media", "color": "yellow"},
+                {"name": "Baja",  "color": "blue"}
+            ]}},
+            "Tarea pendiente": {"rich_text": {}},
+            "Fecha limite":    {"date": {}},
+            "Link del video":  {"url": {}},
+            "Notas":           {"rich_text": {}},
+        }
+    }).json()
+    db_id = db.get("id")
+    if not db_id:
+        return {"error": "No se pudo crear la DB de Videos"}
+
+    # Guardar en cache
+    _client_db_cache[nombre.lower()] = db_id
+
+    # 3. Agregar entrada en DB unificada de producción
+    requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json={
+        "parent": {"database_id": PRODUCTION_DB},
+        "properties": {
+            "Tarea":    {"title": [{"text": {"content": f"{nombre} — onboarding"}}]},
+            "Cliente":  {"select": {"name": nombre}},
+            "Estado":   {"select": {"name": "Pendiente"}},
+            "Urgencia": {"select": {"name": "Alta"}},
+            "Tipo":     {"select": {"name": "Tarea"}},
+            "Detalles": {"rich_text": [{"text": {"content": f"Rubro: {rubro}. {notas}".strip()}}]},
+        }
+    })
+
+    return {
+        "success": True,
+        "cliente": nombre,
+        "page_id": page_id,
+        "videos_db_id": db_id,
+        "mensaje": f"Cliente {nombre} creado en Notion con carpeta y DB de Videos lista."
+    }
 
 
 # --- Tool implementations ---
@@ -469,6 +543,7 @@ def run_tool(name, inputs):
         "get_production_calendar":   get_production_calendar,
         "update_production_entry":   update_production_entry,
         "add_production_entry":      add_production_entry,
+        "onboard_client":            onboard_client,
     }
     fn = tools_map.get(name)
     return fn(**inputs) if fn else {"error": "Tool not found"}
@@ -556,6 +631,19 @@ TOOLS = [
                 "notas":      {"type": "string"}
             },
             "required": ["cliente", "video_name"]
+        }
+    },
+    {
+        "name": "onboard_client",
+        "description": "Crea un cliente nuevo en Notion: página, DB de Videos y entrada en producción. Usá cuando Juan diga 'nuevo cliente' o 'onboarding para X'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {"type": "string", "description": "Nombre del cliente"},
+                "rubro":  {"type": "string", "description": "Rubro o industria del cliente"},
+                "notas":  {"type": "string", "description": "Notas adicionales opcionales"}
+            },
+            "required": ["nombre", "rubro"]
         }
     },
     {
