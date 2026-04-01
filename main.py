@@ -39,7 +39,10 @@ def notion_create(db_id, properties):
     r = requests.post("https://api.notion.com/v1/pages",
                       headers=NOTION_HEADERS,
                       json={"parent": {"database_id": db_id}, "properties": properties})
-    return r.json()
+    data = r.json()
+    if r.status_code != 200:
+        raise Exception(f"Notion error {r.status_code}: {data.get('message', data)}")
+    return data
 
 def notion_update(page_id, properties):
     r = requests.patch(f"https://api.notion.com/v1/pages/{page_id}",
@@ -215,8 +218,11 @@ def add_transaction(concepto, tipo, monto, estado, cliente="", categoria="Cobro 
         "Estado":    {"select": {"name": estado}},
         "Notas":     {"rich_text": [{"text": {"content": notas}}]},
     }
-    result = notion_create(FINANCE_DB, props)
-    return {"success": True, "id": result.get("id")}
+    try:
+        result = notion_create(FINANCE_DB, props)
+        return {"success": True, "id": result.get("id"), "concepto": concepto, "monto": monto, "fecha": date_str}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 def update_transaction_status(cliente, new_estado, concepto=None):
