@@ -203,13 +203,13 @@ def get_finance_summary(month=None):
     }
 
 
-def add_transaction(concepto, tipo, monto, estado, cliente="", categoria="Cobro cliente", notas=""):
-    today = datetime.now().strftime("%Y-%m-%d")
+def add_transaction(concepto, tipo, monto, estado, cliente="", categoria="Cobro cliente", notas="", fecha=None):
+    date_str = fecha if fecha else datetime.now().strftime("%Y-%m-%d")
     props = {
         "Concepto":  {"title": [{"text": {"content": concepto}}]},
         "Tipo":      {"select": {"name": tipo}},
         "Monto":     {"number": float(monto)},
-        "Fecha":     {"date": {"start": today}},
+        "Fecha":     {"date": {"start": date_str}},
         "Cliente":   {"rich_text": [{"text": {"content": cliente}}]},
         "Categoria": {"select": {"name": categoria}},
         "Estado":    {"select": {"name": estado}},
@@ -574,7 +574,8 @@ TOOLS = [
                 "estado":    {"type": "string", "enum": ["Cobrado", "Pagado", "Pendiente"]},
                 "cliente":   {"type": "string"},
                 "categoria": {"type": "string", "enum": ["Cobro cliente", "Herramientas / Software", "Sueldos", "Marketing", "Impuestos", "Otro"]},
-                "notas":     {"type": "string"}
+                "notas":     {"type": "string"},
+                "fecha":     {"type": "string", "description": "Fecha en formato YYYY-MM-DD. Si no se da, usa hoy."}
             },
             "required": ["concepto", "tipo", "monto", "estado"]
         }
