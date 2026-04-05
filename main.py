@@ -40,6 +40,7 @@ def notion_create(db_id, properties):
                       headers=NOTION_HEADERS,
                       json={"parent": {"database_id": db_id}, "properties": properties})
     data = r.json()
+    print(f"[notion_create] status={r.status_code} response={data}", flush=True)
     if r.status_code != 200:
         raise Exception(f"Notion error {r.status_code}: {data.get('message', data)}")
     return data
