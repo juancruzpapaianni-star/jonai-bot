@@ -3,8 +3,10 @@ import json
 import requests
 from datetime import datetime
 import anthropic
+import time
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.error import Conflict
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ANTHROPIC_KEY = os.environ["ANTHROPIC_KEY"]
@@ -798,10 +800,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Bot corriendo...")
-    app.run_polling(drop_pending_updates=True)
+    while True:
+        try:
+            app = Application.builder().token(TELEGRAM_TOKEN).build()
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+            print("Bot corriendo...")
+            app.run_polling(drop_pending_updates=True)
+        except Conflict:
+            print("Conflict detectado — otra instancia activa. Reintentando en 10s...", flush=True)
+            time.sleep(10)
+        except Exception as e:
+            print(f"Error inesperado: {e}. Reintentando en 5s...", flush=True)
+            time.sleep(5)
 
 
 if __name__ == "__main__":
