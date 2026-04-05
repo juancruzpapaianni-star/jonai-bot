@@ -777,9 +777,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if response.stop_reason == "end_turn":
             text = "".join(b.text for b in response.content if hasattr(b, "text"))
             await update.message.reply_text(text or "Listo.")
-            # Solo guardar texto final en historial
-            if text:
-                conversation_history[user_id].append({"role": "assistant", "content": text})
+            # Limpiar historial para evitar que Claude omita tool calls en el próximo request
+            conversation_history[user_id] = []
             break
 
         if response.stop_reason == "tool_use":
