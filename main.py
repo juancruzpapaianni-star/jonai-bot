@@ -41,7 +41,6 @@ def notion_create(db_id, properties):
                       headers=NOTION_HEADERS,
                       json={"parent": {"database_id": db_id}, "properties": properties})
     data = r.json()
-    print(f"[notion_create] status={r.status_code} response={data}", flush=True)
     if r.status_code != 200:
         raise Exception(f"Notion error {r.status_code}: {data.get('message', data)}")
     return data
@@ -727,12 +726,11 @@ EQUIPO:
 - Camilao: operativo, producción y equipo (25%)
 Sociedad activa desde abril 2026. Distribución mensual: revenue - gastos = ganancia neta, 10% fondo emergencia, resto 50/25/25.
 
-CLIENTES ACTIVOS:
-Cecchini (marroquinería), Gran 28 (impresoras laser / máquinas de tatuar),
-Altiér (crema celulitis — flujo diario), Íntegra (barras de proteína), WGW (real estate),
-La Galera (real estate — bloqueado por pago), Real Billion (real estate),
-Andenia (fintech — avatares 3D), Ocha (real estate), Luqstoff (electrodomésticos),
-Acrule (hidroponía), Cáscara (agencia marketing), L'Avenue (marroquinería — bloqueado por pago).
+CLIENTES:
+No tenés una lista fija de clientes. Siempre usá los tools para buscarlos y verificarlos.
+Nunca respondas "no encuentro ese cliente" sin antes haber intentado llamar a get_client_videos o add_video —
+el tool mismo te va a decir si existe o no. Si el cliente se acaba de crear (con onboard_client),
+ya existe en Notion aunque no lo hayas visto antes.
 
 CALENDARIO DE PRODUCCIÓN:
 Hay una DB unificada con todos los videos y tareas por fecha. Podés consultar, actualizar estado,
